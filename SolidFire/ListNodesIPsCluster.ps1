@@ -8,18 +8,6 @@ $SolidFireAPI = "https://10.208.94.40/json-rpc/10.0"
 $User = "admin"
 $Password = "milcalVDC!"
 
-# Prepare the request payload
-$Payload = @(
-    @{
-        method = "ListActiveNodes"
-        params = @{}
-        id = 1
-    }
-) | ConvertTo-Json -Depth 10
-
-# Debug: Output the payload for verification
-Write-Host "Payload: $($Payload | ConvertTo-Json -Depth 10)" -ForegroundColor Cyan
-
 # Make the API request
 try {
     Write-Host "Retrieving active nodes..." -ForegroundColor Yellow
@@ -30,7 +18,11 @@ try {
     if ($Response.result) {
         Write-Host "Active Nodes:" -ForegroundColor Green
         foreach ($Node in $Response.result.nodes) {
-            Write-Host "Node ID: $($Node.nodeID), IP: $($Node.managementIP)" -ForegroundColor Cyan
+            Write-Host "Node ID: $($Node.nodeID)" -ForegroundColor Cyan
+            Write-Host "  Management IP (mip): $($Node.mip)"
+            Write-Host "  Cluster IP (cip): $($Node.cip)"
+            Write-Host "  Storage IP (sip): $($Node.sip)"
+            Write-Host "-----------------------------------"
         }
     } else {
         Write-Host "Request completed, but no result returned." -ForegroundColor Red
