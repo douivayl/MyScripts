@@ -8,6 +8,13 @@ $SolidFireAPI = "https://10.208.94.40/json-rpc/10.0"
 $User = "admin"
 $Password = "milcalVDC!"
 
+# Prepare the request payload for ListActiveNodes
+$Payload = @{
+    method = "ListActiveNodes"
+    params = @{}
+    id = 1
+} | ConvertTo-Json -Depth 10
+
 # Make the API request
 try {
     Write-Host "Retrieving active nodes..." -ForegroundColor Yellow
