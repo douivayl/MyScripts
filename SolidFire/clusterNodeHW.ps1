@@ -11,48 +11,38 @@ $Password = "milcalVDC!"  # Replace with your password
 # Prepare the request payload for GetHardwareInfo
 $Payload = @{
     method = "GetHardwareInfo"
-    params = @{}  # No additional parameters needed
+    params = @{
+        force = $true  # Retrieve info for all nodes
+    }
     id = 1
 } | ConvertTo-Json -Depth 10
 
 # Make the API request
 try {
-    Write-Host "Retrieving hardware information for the node..." -ForegroundColor Yellow
+    Write-Host "Retrieving hardware information for all nodes..." -ForegroundColor Yellow
 
     $Response = Invoke-RestMethod -Uri $SolidFireAPI -Method Post -Body $Payload -ContentType "application/json" -Credential (New-Object System.Management.Automation.PSCredential($User, (ConvertTo-SecureString $Password -AsPlainText -Force)))
 
     # Handle the response
     if ($Response.result.hardwareInfo) {
-        Write-Host "Hardware Information:" -ForegroundColor Green
+        Write-Host "Hardware Information for Nodes:" -ForegroundColor Green
 
-        # Extract high-level information
         $HardwareInfo = $Response.result.hardwareInfo
-        Write-Host "Board Serial: $($HardwareInfo.boardSerial)"
-        Write-Host "Chassis Serial: $($HardwareInfo.chassisSerial)"
-        Write-Host "Node Slot: $($HardwareInfo.nodeSlot)"
-        Write-Host "UUID: $($HardwareInfo.uuid)"
-        Write-Host "-----------------------------------"
 
-        # Display drive information
-        Write-Host "Drives Information:" -ForegroundColor Cyan
-        foreach ($Drive in $HardwareInfo.driveHardware) {
-            Write-Host "  Drive Slot: $($Drive.slot)"
-            Write-Host "  Drive Serial: $($Drive.serial)"
-            Write-Host "  Drive Vendor: $($Drive.vendor)"
-            Write-Host "  Drive Size (GB): $([math]::Round($Drive.size / 1GB, 2))"
-            Write-Host "  Drive Health: $($Drive.lifeRemainingPercent)% Life Remaining"
-            Write-Host "  Power-On Hours: $($Drive.powerOnHours)"
-            Write-Host "-----------------------------------"
-        }
+        # Iterate over the hardwareInfo object to list all attributes
+        foreach ($Key in $HardwareInfo.PSObject.Properties.Name) {
+            $Value = $HardwareInfo.$Key
 
-        # Display network information
-        Write-Host "Network Interfaces:" -ForegroundColor Cyan
-        foreach ($Interface in $HardwareInfo.networkInterfaces.GetEnumerator()) {
-            Write-Host "  Interface: $($Interface.Key)"
-            Write-Host "  Details: $($Interface.Value)"
+            # Handle nested objects and arrays
+            if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+                Write-Host "$Key: (Complex Object or Array)" -ForegroundColor Cyan
+                $Value | ConvertTo-Json -Depth 10 | Write-Output
+            } else {
+                Write-Host "$Key: $Value"
+            }
         }
     } else {
-        Write-Host "No hardware information returned." -ForegroundColor Red
+        Write-Host "No hardware information returned in the response." -ForegroundColor Red
     }
 } catch {
     Write-Host "An error occurred: $_" -ForegroundColor Red
