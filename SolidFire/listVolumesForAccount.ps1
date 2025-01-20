@@ -22,7 +22,7 @@ $Payload = @{
 
 # Make the API request
 try {
-    Write-Host "Retrieving volumes for account ID $AccountID..." -ForegroundColor Yellow
+    Write-Host "Retrieving volumes for account ID $AccountID " -ForegroundColor Yellow
 
     $Response = Invoke-RestMethod -Uri $SolidFireAPI -Method Post -Body $Payload -ContentType "application/json" -Credential (New-Object System.Management.Automation.PSCredential($User, (ConvertTo-SecureString $Password -AsPlainText -Force)))
 
