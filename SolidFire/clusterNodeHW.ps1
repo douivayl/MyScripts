@@ -12,7 +12,7 @@ $Password = "milcalVDC!"  # Replace with your password
 $Payload = @{
     method = "GetHardwareInfo"
     params = @{
-        force = $true  # Retrieve info for all nodes
+        force = $true  # Set to true to retrieve info for all nodes
     }
     id = 1
 } | ConvertTo-Json -Depth 10
@@ -23,27 +23,9 @@ try {
 
     $Response = Invoke-RestMethod -Uri $SolidFireAPI -Method Post -Body $Payload -ContentType "application/json" -Credential (New-Object System.Management.Automation.PSCredential($User, (ConvertTo-SecureString $Password -AsPlainText -Force)))
 
-    # Handle the response
-    if ($Response.result.hardwareInfo) {
-        Write-Host "Hardware Information for Nodes:" -ForegroundColor Green
-
-        $HardwareInfo = $Response.result.hardwareInfo
-
-        # Iterate over the hardwareInfo object to list all attributes
-        foreach ($Key in $HardwareInfo.PSObject.Properties.Name) {
-            $Value = $HardwareInfo.$Key
-
-            # Handle nested objects and arrays
-            if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
-                Write-Host "$Key: (Complex Object or Array)" -ForegroundColor Cyan
-                $Value | ConvertTo-Json -Depth 10 | Write-Output
-            } else {
-                Write-Host "$Key: $Value"
-            }
-        }
-    } else {
-        Write-Host "No hardware information returned in the response." -ForegroundColor Red
-    }
+    # Output the entire JSON response directly to the console
+    Write-Host "Raw JSON Response:" -ForegroundColor Green
+    $Response | ConvertTo-Json -Depth 10 | Write-Output
 } catch {
     Write-Host "An error occurred: $_" -ForegroundColor Red
 }
