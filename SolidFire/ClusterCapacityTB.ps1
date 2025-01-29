@@ -27,12 +27,13 @@ try {
         # Convert bytes to TB (1 TB = 1,099,511,627,776 bytes)
         $ConvertToTB = { param ($bytes) [math]::Round($bytes / 1TB, 2) }
 
-        $TotalTB = &$ConvertToTB $ClusterCap.totalCapacityBytes
-        $UsedTB = &$ConvertToTB $ClusterCap.usedCapacityBytes
-        $FreeTB = &$ConvertToTB ($ClusterCap.totalCapacityBytes - $ClusterCap.usedCapacityBytes)
-        $MetadataUsedTB = &$ConvertToTB $ClusterCap.metadataBytes
-        $SnapshotReserveTB = &$ConvertToTB $ClusterCap.snapshotReserveUsedSpace
-        $ThinProvisionedTB = &$ConvertToTB ($ClusterCap.provisionedSpaceBytes - $ClusterCap.totalCapacityBytes)
+        # Corrected property names
+        $TotalTB = &$ConvertToTB $ClusterCap.maxUsedSpace
+        $UsedTB = &$ConvertToTB $ClusterCap.usedSpace
+        $FreeTB = &$ConvertToTB ($ClusterCap.maxUsedSpace - $ClusterCap.usedSpace)
+        $MetadataUsedTB = &$ConvertToTB $ClusterCap.usedMetadataSpace
+        $SnapshotReserveTB = &$ConvertToTB $ClusterCap.usedMetadataSpaceInSnapshots
+        $ThinProvisionedTB = &$ConvertToTB ($ClusterCap.provisionedSpace - $ClusterCap.maxUsedSpace)
 
         # Display Results
         Write-Host "SolidFire Cluster Capacity Summary (TB):" -ForegroundColor Cyan
