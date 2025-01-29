@@ -28,3 +28,19 @@ try {
 } catch {
     Write-Host "Error retrieving snapshots: $_" -ForegroundColor Red
 }
+
+if ($Response.result -and $Response.result.snapshots) {
+    $CsvFilePath = "C:\SolidFire_Snapshots.csv"  # Modify path as needed
+
+    # Write CSV Header
+    "snapshotID,volumeID,name,createTime" | Out-File -FilePath $CsvFilePath -Encoding utf8 -Force
+
+    # Append Each Snapshot as a Line
+    foreach ($Snapshot in $Response.result.snapshots) {
+        "$($Snapshot.snapshotID),$($Snapshot.volumeID),$($Snapshot.name),$($Snapshot.createTime)" | Out-File -FilePath $CsvFilePath -Append -Encoding utf8
+    }
+
+    Write-Host "Snapshot list successfully written line by line to $CsvFilePath" -ForegroundColor Green
+} else {
+    Write-Host "No snapshots found to export." -ForegroundColor Yellow
+}
