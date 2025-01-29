@@ -41,8 +41,10 @@ $SnapshotList = $SnapshotIDs -split "," | ForEach-Object { $_.Trim() }
 
 # Delete each snapshot one by one
 foreach ($ID in $SnapshotList) {
-    if ($ID -match '^\d+$') {
-        Delete-SolidFireSnapshot -SnapshotID [int]$ID
+    $CleanID = ($ID -replace '\D', '') -as [int]  # Remove non-digits and convert
+
+    if ($CleanID -gt 0) {  
+        Delete-SolidFireSnapshot -SnapshotID $CleanID
     } else {
         Write-Host "Invalid Snapshot ID: $ID" -ForegroundColor Yellow
     }
