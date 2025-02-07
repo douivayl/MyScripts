@@ -1,23 +1,82 @@
-# Force PowerShell to Use TLS 1.2
+<#
+.SYNOPSIS
+    Retrieve and list SolidFire volumes with usage statistics.
+
+.DESCRIPTION
+    This script retrieves volume information and usage statistics from a SolidFire cluster.
+    It displays the data in a formatted table and exports it to a CSV file.
+
+.PARAMETER IPAddress
+    The management IP address of the SolidFire cluster.
+
+.PARAMETER Username
+    The username for SolidFire admin.
+
+.PARAMETER Password
+    The password for SolidFire admin.
+
+.EXAMPLE
+    .\List-SolidFireVolumeStats.ps1 -IPAddress "10.10.10.1" -Username "admin" -Password "yourPassword"
+
+    Retrieves volume statistics and exports them to a CSV file.
+
+.EXAMPLE
+    .\List-SolidFireVolumeStats.ps1
+
+    Prompts for credentials and IP address, then retrieves the volume statistics.
+
+.OUTPUTS
+    The script will display output similar to this:
+
+    VolumeID Name     Status   TotalSizeGB  UsedSizeGB  UsedPercentage  CreateTime           Access  
+    -------- ----     ------   -----------  ----------  --------------  ----------           ------  
+    1234     Vol_1    active   500          250         50 %            2024-01-29 10:30     readWrite
+    5678     Vol_2    active   1000         300         30 %            2024-01-29 11:45     readWrite
+
+    A CSV file is also saved in the current user's Documents directory.
+
+.NOTES
+    This script forces the use of TLS 1.2 and bypasses SSL certificate validation in order to work with my specific host for running the script.
+    You may not need it at all, depending on your Windows host.
+#>
+
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-# Bypass SSL Certificate Validation (For Testing Only)
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 
-# Define the SolidFire API endpoint and credentials
-$ClusterIP = "10.208.94.40"
-$Username = "admin"
-$Password = "milcalVDC!"
-$ApiUrl = "https://$ClusterIP/json-rpc/10.0"
+param (
+    [string]$IPAddress,
+    [string]$Username,
+    [string]$Password
+)
 
-# Encode credentials for basic authentication
-$AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${Username}:${Password}"))
-$Headers = @{
-    "Authorization" = "Basic $AuthInfo"
-    "Content-Type" = "application/json"
-}
+function Retrieve-SolidFireVolumeStats {
+    param (
+        [string]$IPAddress,
+        [string]$Username,
+        [string]$Password
+    )
 
-# Define JSON payload to get volume list
-$PayloadVolumes = @"
+    if (-not $IPAddress) {
+        $IPAddress = Read-Host "Enter the SolidFire API IP address"
+    }
+    if (-not $Username) {
+        $Username = Read-Host "Enter your SolidFire username"
+    }
+    if (-not $Password) {
+        $Password = Read-Host "Enter your SolidFire password" -AsSecureString
+        $Password = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
+            [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)
+        )
+    }
+
+    $apiUrl = "https://$IPAddress/json-rpc/11.0"
+    $authInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${Username}:${Password}"))
+    $headers = @{
+        "Authorization" = "Basic $authInfo"
+        "Content-Type"  = "application/json"
+    }
+
+    $payloadVolumes = @"
 {
     "method": "ListVolumes",
     "params": {},
@@ -25,77 +84,71 @@ $PayloadVolumes = @"
 }
 "@
 
-# Make the API call to get volumes
-try {
-    $ResponseVolumes = Invoke-RestMethod -Uri $ApiUrl -Method Post -Headers $Headers -Body $PayloadVolumes
-    $Volumes = $ResponseVolumes.result.volumes
+    try {
+        $responseVolumes = Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -Body $payloadVolumes
+        $volumes = $responseVolumes.result.volumes
 
-    if ($Volumes.Count -eq 0) {
-        Write-Host "No volumes found on the cluster."
-    } else {
-        # Prepare an array to store volume statistics
-        $VolumeStatsFormatted = @()
+        if ($volumes.Count -eq 0) {
+            Write-Host "No volumes found on the cluster."
+        } else {
+            $volumeStatsFormatted = @()
 
-        foreach ($Volume in $Volumes) {
-            $VolumeID = $Volume.volumeID
-            $VolumeName = $Volume.name
-            $TotalSizeGB = [math]::Round($Volume.totalSize / 1GB, 2)
+            foreach ($volume in $volumes) {
+                $volumeID = $volume.volumeID
+                $volumeName = $volume.name
+                $totalSizeGB = [math]::Round($volume.totalSize / 1GB, 2)
 
-            # Fetch volume usage stats using ListVolumeStats
-            $PayloadStats = @"
+                $payloadStats = @"
 {
     "method": "ListVolumeStats",
-    "params": { "volumeIDs": [$VolumeID] },
+    "params": { "volumeIDs": [$volumeID] },
     "id": 2
 }
 "@
 
-            try {
-                $ResponseStats = Invoke-RestMethod -Uri $ApiUrl -Method Post -Headers $Headers -Body $PayloadStats
-                
-                if ($ResponseStats -and $ResponseStats.result -and $ResponseStats.result.volumeStats.Count -gt 0) {
-                    $Stats = $ResponseStats.result.volumeStats[0]
+                try {
+                    $responseStats = Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -Body $payloadStats
                     
-                    # Extract used space in GB
-                    $UsedSizeGB = [math]::Round($Stats.nonZeroBlocks * 4096 / 1GB, 2)  # 4KB block size
-                    $UsedPercentage = if ($TotalSizeGB -gt 0) { [math]::Round(($UsedSizeGB / $TotalSizeGB) * 100, 2) } else { 0 }
+                    if ($responseStats -and $responseStats.result -and $responseStats.result.volumeStats.Count -gt 0) {
+                        $stats = $responseStats.result.volumeStats[0]
+                        
+                        $usedSizeGB = [math]::Round($stats.nonZeroBlocks * 4096 / 1GB, 2)
+                        $usedPercentage = if ($totalSizeGB -gt 0) { [math]::Round(($usedSizeGB / $totalSizeGB) * 100, 2) } else { 0 }
 
-                    # Store the formatted output
-                    $VolumeStatsFormatted += [PSCustomObject]@{
-                        VolumeID       = $VolumeID
-                        Name           = $VolumeName
-                        Status         = $Volume.status
-                        TotalSizeGB    = $TotalSizeGB
-                        UsedSizeGB     = $UsedSizeGB
-                        UsedPercentage = "$UsedPercentage %"
-                        CreateTime     = Get-Date $Volume.createTime -Format "yyyy-MM-dd HH:mm:ss"
-                        Access         = $Volume.access
+                        $volumeStatsFormatted += [PSCustomObject]@{
+                            VolumeID       = $volumeID
+                            Name           = $volumeName
+                            Status         = $volume.status
+                            TotalSizeGB    = $totalSizeGB
+                            UsedSizeGB     = $usedSizeGB
+                            UsedPercentage = "$usedPercentage %"
+                            CreateTime     = Get-Date $volume.createTime -Format "yyyy-MM-dd HH:mm"
+                            Access         = $volume.access
+                        }
+                    } else {
+                        Write-Host "No stats available for Volume ID $volumeID" -ForegroundColor Yellow
                     }
-                } else {
-                    Write-Host "No stats available for Volume ID $VolumeID" -ForegroundColor Yellow
+                } catch {
+                    Write-Host "Error retrieving stats for Volume ID $volumeID: $_" -ForegroundColor Red
                 }
-            } catch {
-                Write-Host "Error retrieving stats for Volume ID $VolumeID: $_" -ForegroundColor Red
+            }
+
+            if ($volumeStatsFormatted.Count -gt 0) {
+                $volumeStatsFormatted | Format-Table -AutoSize
+
+                $timestamp = (Get-Date -Format "yyyyMMddHHmm")
+                $outputDir = "$env:USERPROFILE\Documents\SolidFireVolumes"
+                $outputPath = Join-Path -Path $outputDir -ChildPath "VolumeStats_$timestamp.csv"
+
+                $volumeStatsFormatted | Export-Csv -Path $outputPath -NoTypeInformation -Encoding UTF8
+                Write-Host "✅ Volume statistics exported to: $outputPath" -ForegroundColor Green
+            } else {
+                Write-Host "No valid volume statistics retrieved." -ForegroundColor Yellow
             }
         }
-
-        # Display in table format
-        if ($VolumeStatsFormatted.Count -gt 0) {
-            $VolumeStatsFormatted | Format-Table -AutoSize
-
-            # Save to a CSV file with timestamp
-            $Timestamp = (Get-Date -Format "yyyyMMddHHmmss")
-            $OutputDir = "$env:USERPROFILE\Documents\SolidFireVolumes"
-            if (-not (Test-Path -Path $OutputDir)) {
-                New-Item -ItemType Directory -Path $OutputDir
-            }
-            $OutputPath = Join-Path -Path $OutputDir -ChildPath "VolumeStats_$Timestamp.csv"
-            $VolumeStatsFormatted | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
-            Write-Host "Volume statistics exported to $OutputPath"
-        } else {
-            Write-Host "No valid volume statistics retrieved." -ForegroundColor Yellow
-        }
+    } catch {
+        Write-Host "🚨 Failed to retrieve volume statistics: $_" -ForegroundColor Red
     }
-} catch {
-    Write-Host "Failed to retrieve volume statistics: $_" -ForegroundColor Red
 }
+
+Retrieve-SolidFireVolumeStats -IPAddress $IPAddress -Username $Username -Password $Password

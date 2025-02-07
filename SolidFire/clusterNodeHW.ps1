@@ -1,31 +1,108 @@
-# Force PowerShell to Use TLS 1.2
+<#
+.SYNOPSIS
+    Retrieve hardware information for all nodes in a SolidFire cluster.
+
+.DESCRIPTION
+    This script retrieves detailed hardware information for all nodes in a SolidFire cluster.
+    The response is formatted as JSON and displayed in the console.
+
+.PARAMETER IPAddress
+    The management IP address of the SolidFire cluster.
+
+.PARAMETER Username
+    The username for SolidFire admin.
+
+.PARAMETER Password
+    The password for SolidFire admin.
+
+.EXAMPLE
+    .\Get-SolidFireHardwareInfo.ps1 -IPAddress "10.10.10.1" -Username "admin" -Password "yourPassword"
+
+    Retrieves and displays hardware information for all nodes.
+
+.EXAMPLE
+    .\Get-SolidFireHardwareInfo.ps1
+
+    Prompts for credentials and IP address, then retrieves the hardware information.
+
+.OUTPUTS
+    The script will display output similar to this:
+
+    Retrieving hardware information for all nodes...
+    {
+        "result": {
+            "nodes": [
+                {
+                    "nodeID": 1,
+                    "chassisType": "SF9605",
+                    "serial": "ABC12345",
+                    "cpu": "Intel Xeon E5",
+                    "memoryGB": 256
+                }
+            ]
+        }
+    }
+
+.NOTES
+    This script forces the use of TLS 1.2 and bypasses SSL certificate validation in order to work with my specific host for running the script.
+    You may not need it at all, depending on your Windows host.
+#>
+
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-# Bypass SSL Certificate Validation (For Testing Only)
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 
-# Define the API endpoint and credentials
-$SolidFireAPI = "https://10.208.94.40/json-rpc/10.0"  # Replace with your cluster's endpoint
-$User = "admin"  # Replace with your username
-$Password = "milcalVDC!"  # Replace with your password
+param (
+    [string]$IPAddress,
+    [string]$Username,
+    [string]$Password
+)
 
-# Prepare the request payload for GetHardwareInfo
-$Payload = @{
-    method = "GetHardwareInfo"
-    params = @{
-        force = $true  # Set to true to retrieve info for all nodes
+function Retrieve-SolidFireHardwareInfo {
+    param (
+        [string]$IPAddress,
+        [string]$Username,
+        [string]$Password
+    )
+
+    if (-not $IPAddress) {
+        $IPAddress = Read-Host "Enter the SolidFire API IP address"
     }
-    id = 1
-} | ConvertTo-Json -Depth 10
+    if (-not $Username) {
+        $Username = Read-Host "Enter your SolidFire username"
+    }
+    if (-not $Password) {
+        $Password = Read-Host "Enter your SolidFire password" -AsSecureString
+        $Password = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
+            [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)
+        )
+    }
 
-# Make the API request
-try {
-    Write-Host "Retrieving hardware information for all nodes..." -ForegroundColor Yellow
+    $apiUrl = "https://$IPAddress/json-rpc/11.0"
+    $authInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${Username}:${Password}"))
+    $headers = @{
+        "Authorization" = "Basic $authInfo"
+        "Content-Type"  = "application/json"
+    }
 
-    $Response = Invoke-RestMethod -Uri $SolidFireAPI -Method Post -Body $Payload -ContentType "application/json" -Credential (New-Object System.Management.Automation.PSCredential($User, (ConvertTo-SecureString $Password -AsPlainText -Force)))
-
-    # Output the entire JSON response directly to the console
-    Write-Host "Raw JSON Response:" -ForegroundColor Green
-    $Response | ConvertTo-Json -Depth 10 | Write-Output
-} catch {
-    Write-Host "An error occurred: $_" -ForegroundColor Red
+    $payload = @"
+{
+    "method": "GetHardwareInfo",
+    "params": {
+        "force": true
+    },
+    "id": 1
 }
+"@
+
+    try {
+        Write-Host "Retrieving hardware information for all nodes..." -ForegroundColor Yellow
+        $response = Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -Body $payload
+
+        Write-Host "✅ Hardware Information:" -ForegroundColor Cyan
+        $response | ConvertTo-Json -Depth 10 | Write-Output
+    } catch {
+        Write-Host "🚨 Error retrieving hardware information: $_" -ForegroundColor Red
+    }
+}
+
+Retrieve-SolidFireHardwareInfo -IPAddress $IPAddress -Username $Username -Password $Password

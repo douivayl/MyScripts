@@ -1,41 +1,73 @@
-# Force PowerShell to Use TLS 1.2
+<#
+.SYNOPSIS
+    Retrieves SolidFire volumes associated with a specific account ID.
+
+.DESCRIPTION
+    This script connects to a SolidFire cluster using the provided API credentials and retrieves all volumes associated with a specified account ID.
+
+.PARAMETER ClusterIP
+    The IP address of the SolidFire cluster.
+
+.PARAMETER Username
+    The username for SolidFire admin.
+
+.PARAMETER Password
+    The password for SolidFire admin.
+
+.PARAMETER AccountID
+    The account ID for which volumes need to be retrieved.
+
+.EXAMPLE
+    .\ListVolumesForAccount.ps1 -ClusterIP "192.168.1.100" -Username "admin" -Password "password" -AccountID 123
+
+.NOTES
+    This script forces the use of TLS 1.2 and bypasses SSL certificate validation to work with the specific host. This may not be required depending on your Windows host.
+#>
+
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-# Bypass SSL Certificate Validation (For Testing Only)
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 
-# Define the API endpoint and credentials
-$SolidFireAPI = "https://10.208.94.40/json-rpc/10.0"
-$User = "admin"
-$Password = "milcalVDC!"
+param (
+    [string]$ClusterIP,
+    [string]$Username,
+    [SecureString]$Password,
+    [int]$AccountID
+)
 
-# Specify the account ID
-$AccountID = <AccountID>  # Replace with the account ID you want to query
+if (-not $ClusterIP) { $ClusterIP = Read-Host "Enter the SolidFire cluster IP" }
+if (-not $Username) { $Username = Read-Host "Enter your SolidFire username" }
+if (-not $Password) { $Password = Read-Host "Enter your SolidFire password" -AsSecureString }
+if (-not $AccountID) { $AccountID = Read-Host "Enter the Account ID" }
 
-# Prepare the request payload
+$ApiUrl = "https://$ClusterIP/json-rpc/10.0"
+$SecurePassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password))
+$AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${Username}:${SecurePassword}"))
+$Headers = @{
+    "Authorization" = "Basic $AuthInfo"
+    "Content-Type"  = "application/json"
+}
+
 $Payload = @{
     method = "ListVolumesForAccount"
-    params = @{
-        accountID = $AccountID
-    }
-    id = 1
+    params = @{ accountID = $AccountID }
+    id     = 1
 } | ConvertTo-Json -Depth 10
 
-# Make the API request
 try {
-    Write-Host "Retrieving volumes for account ID $AccountID " -ForegroundColor Yellow
+    Write-Host "Retrieving volumes for account ID $AccountID..." -ForegroundColor Yellow
 
-    $Response = Invoke-RestMethod -Uri $SolidFireAPI -Method Post -Body $Payload -ContentType "application/json" -Credential (New-Object System.Management.Automation.PSCredential($User, (ConvertTo-SecureString $Password -AsPlainText -Force)))
+    $Response = Invoke-RestMethod -Uri $ApiUrl -Method Post -Body $Payload -Headers $Headers
 
-    # Handle the response
     if ($Response.result.volumes) {
-        Write-Host "Volumes for account ID $AccountID:" -ForegroundColor Green
+        Write-Host "Volumes for account ID ${AccountID}:" -ForegroundColor Green
         foreach ($Volume in $Response.result.volumes) {
-            Write-Host "  Volume ID: $($Volume.volumeID)"
-            Write-Host "  Name: $($Volume.name)"
-            Write-Host "  Size: $([math]::Round($Volume.totalSize / 1GB, 2)) GB"
-            Write-Host "  Status: $($Volume.status)"
-            Write-Host "  IQN: $($Volume.iqn)"
-            Write-Host "--------------------------------------"
+            [PSCustomObject]@{
+                VolumeID = $Volume.volumeID
+                Name     = $Volume.name
+                SizeGB   = [math]::Round($Volume.totalSize / 1GB, 2)
+                Status   = $Volume.status
+                IQN      = $Volume.iqn
+            } | Format-Table -AutoSize
         }
     } else {
         Write-Host "No volumes found for account ID $AccountID." -ForegroundColor Red

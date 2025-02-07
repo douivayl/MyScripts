@@ -1,58 +1,83 @@
-﻿# Force PowerShell to Use TLS 1.2
+﻿<#
+.SYNOPSIS
+    Retrieves the status of an asynchronous operation from a SolidFire cluster.
+
+.DESCRIPTION
+    This script queries a SolidFire cluster to get the status of an asynchronous operation
+    using the provided asyncHandle. It supports secure API calls and handles response errors gracefully.
+
+.PARAMETER IPAddress
+    The management IP address of the SolidFire cluster.
+
+.PARAMETER Username
+    The username for SolidFire admin.
+
+.PARAMETER Password
+    The password for SolidFire admin.
+
+.PARAMETER AsyncHandle
+    The handle identifying the asynchronous operation.
+
+.EXAMPLE
+    .\Get-SolidFireAsyncResult.ps1 -IPAddress "192.168.0.1" -Username "admin" -Password "password" -AsyncHandle 107
+
+.NOTES
+    This script forces the use of TLS 1.2 and bypasses SSL certificate validation to work with specific hosts.
+    You may not need these settings depending on your Windows host.
+#>
+
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-# Bypass SSL Certificate Validation (For Testing Only)
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 
-# Define the SolidFire API endpoint and credentials
-$ClusterIP = "10.208.94.40"
-$Username = "admin"
-$Password = "milcalVDC!"
-$ApiUrl = "https://$ClusterIP/json-rpc/10.0"
+param (
+    [string]$IPAddress,
+    [string]$Username,
+    [SecureString]$Password,
+    [int]$AsyncHandle
+)
 
-# Encode credentials for basic authentication
-$AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${Username}:${Password}"))
+if (-not $IPAddress) { $IPAddress = Read-Host "Enter the SolidFire API IP address" }
+if (-not $Username) { $Username = Read-Host "Enter your SolidFire username" }
+if (-not $Password) { $Password = Read-Host -AsSecureString "Enter your SolidFire password" }
+if (-not $AsyncHandle) { $AsyncHandle = Read-Host "Enter the asyncHandle for the operation" -AsInt }
+
+$ApiUrl = "https://$IPAddress/json-rpc/10.0"
+$AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${Username}:${([Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)))}"))
 $Headers = @{
     "Authorization" = "Basic $AuthInfo"
     "Content-Type" = "application/json"
 }
 
-# Prompt for asyncHandle
-$AsyncHandle = Read-Host "Enter the asyncHandle for the operation"
-
-# Define the JSON payload for the API call
 $Payload = @{
     method = "GetAsyncResult"
-    params = @{
-        asyncHandle = (107)
-    }
+    params = @{ asyncHandle = $AsyncHandle }
     id = 1
 } | ConvertTo-Json -Depth 10 -Compress
 
-# Make the API call
 try {
     $Response = Invoke-RestMethod -Uri $ApiUrl -Method Post -Headers $Headers -Body $Payload
-
-    # Check the status of the operation
     $Status = $Response.result.status
+
     Write-Host "Async operation status: $Status"
 
-    if ($Status -eq "complete") {
-        # Check for errors or results
-        if ($null -ne $Response.result.error) {
-            $ErrorDetails = $Response.result.error
-            Write-Host "The operation completed with errors:" -ForegroundColor Red
-            Write-Host "Error Name: $($ErrorDetails.name)"
-            Write-Host "Error Message: $($ErrorDetails.message)"
-        } else {
-            $Result = $Response.result.result
-            Write-Host "The operation completed successfully with the following result:" -ForegroundColor Green
-            $Result | Format-List
+    switch ($Status) {
+        "complete" {
+            if ($Response.result.error) {
+                Write-Host "The operation completed with errors:" -ForegroundColor Red
+                Write-Host "Error Name: $($Response.result.error.name)"
+                Write-Host "Error Message: $($Response.result.error.message)"
+            } else {
+                Write-Host "The operation completed successfully with the following result:" -ForegroundColor Green
+                $Response.result.result | Format-List
+            }
         }
-    } elseif ($Status -eq "running") {
-        Write-Host "The operation is still running. Check again later." -ForegroundColor Yellow
-    } else {
-        Write-Host "The operation status is unknown or unexpected. Details:" -ForegroundColor Red
-        $Response.result | Format-List
+        "running" {
+            Write-Host "The operation is still running. Check again later." -ForegroundColor Yellow
+        }
+        default {
+            Write-Host "The operation status is unknown or unexpected. Details:" -ForegroundColor Red
+            $Response.result | Format-List
+        }
     }
 
 } catch {

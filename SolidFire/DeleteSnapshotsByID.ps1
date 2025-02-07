@@ -1,51 +1,106 @@
-# Force PowerShell to Use TLS 1.2
+<#
+.SYNOPSIS
+    Delete SolidFire snapshots by ID.
+
+.DESCRIPTION
+    This script deletes SolidFire snapshots using the provided snapshot IDs.
+    It supports both command-line parameters and interactive prompts for input.
+
+.PARAMETER Username
+    The username for the SolidFire admin.
+
+.PARAMETER Password
+    The password for the SolidFire admin.
+
+.PARAMETER SnapshotID
+    The IDs of the snapshots to be deleted. Accepts multiple IDs.
+
+.PARAMETER IPAddress
+    The mgmt IP address of the SolidFire cluster.
+
+.EXAMPLE
+    .\Delete-SolidFireSnapshot.ps1 -Username "yourUsername" -Password "yourPassword" -SnapshotID "snapshotID1","snapshotID2" -IPAddress "yourSolidFireIPAddress"
+
+    Deletes the specified snapshots using the provided credentials and IP address.
+
+.EXAMPLE
+    .\Delete-SolidFireSnapshot.ps1
+
+    Prompts for the necessary information and deletes the specified snapshots.
+
+.NOTES
+    This script forces the use of TLS 1.2 and bypasses SSL certificate validation in order to work with my specific host for running the script. You may not need it at all, depending on your windows host.
+#>
+
+# Force TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 # Bypass SSL Certificate Validation (For Testing Only)
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 
-# Define API Endpoint & Credentials
-$SolidFireAPI = "https://<MVIP>/json-rpc/10.0"  # Replace <MVIP> with the Management Virtual IP
-$User = "admin"
-$Password = "YourPassword"
+param (
+    [string]$Username,
+    [string]$Password,
+    [string[]]$SnapshotID,
+    [string]$IPAddress
+)
 
-# Function to delete a snapshot by ID
-function Delete-SolidFireSnapshot {
+function Remove-SolidFireSnapshot {
     param (
-        [int]$SnapshotID
+        [string]$Username,
+        [string]$Password,
+        [string[]]$SnapshotID,
+        [string]$IPAddress
     )
 
-    $Payload = @{
-        method = "DeleteSnapshot"
-        params = @{
-            snapshotID = $SnapshotID
-        }
-        id = 1
-    } | ConvertTo-Json -Depth 10
+    if (-not $IPAddress) {
+        $IPAddress = Read-Host "Enter the SolidFire API IP address"
+    }
+    
+    if (-not $Username) {
+        $Username = Read-Host "Enter your SolidFire username"
+    }
 
-    try {
-        $Response = Invoke-RestMethod -Uri $SolidFireAPI -Method Post -Body $Payload -ContentType "application/json" -Credential (New-Object System.Management.Automation.PSCredential($User, (ConvertTo-SecureString $Password -AsPlainText -Force)))
+    if (-not $Password) {
+        $Password = Read-Host "Enter your SolidFire password" -AsSecureString
+        $Password = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
+            [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)
+        )
+    }
 
-        if ($Response.result) {
-            Write-Host "Snapshot ID $SnapshotID deleted successfully." -ForegroundColor Green
-        } else {
-            Write-Host "Failed to delete Snapshot ID $SnapshotID." -ForegroundColor Red
+    if (-not $SnapshotID) {
+        $SnapshotID = @()
+        $SnapshotID += Read-Host "Enter the Snapshot ID to delete"
+    }
+
+    $apiUrl = "https://$IPAddress/json-rpc/11.0"
+
+    $authInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${Username}:${Password}"))
+    $headers = @{
+        "Authorization" = "Basic $authInfo"
+        "Content-Type"  = "application/json"
+    }
+
+    foreach ($id in $SnapshotID) {
+        $body = @{
+            "method" = "DeleteSnapshot"
+            "params" = @{
+                "snapshotID" = $id
+            }
+            "id" = 1
+        } | ConvertTo-Json -Depth 10
+
+        try {
+            $response = Invoke-RestMethod -Uri $apiUrl -Method Post -Body $body -Headers $headers
+
+            if ($response.result) {
+                Write-Host "✅ Snapshot ID $id deleted successfully." -ForegroundColor Green
+            } else {
+                Write-Host "❌ Failed to delete snapshot ID $id." -ForegroundColor Red
+            }
+        } catch {
+            Write-Host "🚨 Error deleting snapshot ID ${id}: $_" -ForegroundColor Red
         }
-    } catch {
-        Write-Host "Error deleting Snapshot ID $SnapshotID: $_" -ForegroundColor Red
     }
 }
 
-# Ask user for Snapshot ID(s)
-$SnapshotIDs = Read-Host "Enter Snapshot ID(s) to delete (comma-separated)"
-$SnapshotList = $SnapshotIDs -split "," | ForEach-Object { $_.Trim() }
-
-# Delete each snapshot one by one
-foreach ($ID in $SnapshotList) {
-    $CleanID = ($ID -replace '\D', '') -as [int]  # Remove non-digits and convert
-
-    if ($CleanID -gt 0) {  
-        Delete-SolidFireSnapshot -SnapshotID $CleanID
-    } else {
-        Write-Host "Invalid Snapshot ID: $ID" -ForegroundColor Yellow
-    }
-}
+Remove-SolidFireSnapshot -Username $Username -Password $Password -SnapshotID $SnapshotID -IPAddress $IPAddress
