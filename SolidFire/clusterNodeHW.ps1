@@ -29,61 +29,63 @@
     The script will display output similar to this:
 
     Retrieving hardware information for all nodes...
-    {
-        "result": {
-            "nodes": [
-                {
-                    "nodeID": 1,
-                    "chassisType": "SF9605",
-                    "serial": "ABC12345",
-                    "cpu": "Intel Xeon E5",
-                    "memoryGB": 256
-                }
-            ]
-        }
-    }
+
+Node ID: 4
+Serial Number: XXXXX
+Model: XXXXXX
+------------------------------------
+Node ID: 2
+Serial Number: XXXXX
+Model: XXXXXX
+------------------------------------
 
 .NOTES
     This script forces the use of TLS 1.2 and bypasses SSL certificate validation in order to work with my specific host for running the script.
     You may not need it at all, depending on your Windows host.
 #>
 
+# Force PowerShell to Use TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# Bypass SSL Certificate Validation (For Testing Only)
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 
-param (
-    [string]$IPAddress,
-    [string]$Username,
-    [string]$Password
-)
-
-function Retrieve-SolidFireHardwareInfo {
+function Retrieve-SolidFireNodeInfo {
     param (
         [string]$IPAddress,
         [string]$Username,
         [string]$Password
     )
 
+    # Prompt for the API IP address if not provided
     if (-not $IPAddress) {
         $IPAddress = Read-Host "Enter the SolidFire API IP address"
     }
+
+    # Prompt for the username if not provided
     if (-not $Username) {
         $Username = Read-Host "Enter your SolidFire username"
     }
+
+    # Prompt for the password if not provided
     if (-not $Password) {
-        $Password = Read-Host "Enter your SolidFire password" -AsSecureString
-        $Password = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
-            [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)
-        )
+        $Password = Read-Host "Enter your SolidFire password"
     }
 
+    # Prepare API URL and Authentication Header
     $apiUrl = "https://$IPAddress/json-rpc/11.0"
-    $authInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${Username}:${Password}"))
+   
+    # Prepare the Authorization header using Base64 encoded username and password
+    $authInfo = "${Username}:${Password}"
+    $authBase64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($authInfo))
+
+    # Set the headers
     $headers = @{
-        "Authorization" = "Basic $authInfo"
+        "Authorization" = "Basic $authBase64"
         "Content-Type"  = "application/json"
     }
 
+    # Prepare the payload for the API request
     $payload = @"
 {
     "method": "GetHardwareInfo",
@@ -96,13 +98,27 @@ function Retrieve-SolidFireHardwareInfo {
 
     try {
         Write-Host "Retrieving hardware information for all nodes..." -ForegroundColor Yellow
+       
+        # Send the request to the SolidFire API
         $response = Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -Body $payload
 
-        Write-Host "✅ Hardware Information:" -ForegroundColor Cyan
-        $response | ConvertTo-Json -Depth 10 | Write-Output
+        # Process and display the serial number and model for each node
+        foreach ($node in $response.result.nodes) {
+            $nodeID = $node.nodeID
+            $serialNumber = $node.result.hardwareInfo.serial
+            $model = $node.result.hardwareInfo.platform.nodeType
+
+            # Displaying node info
+            Write-Host "Node ID: $nodeID"
+            Write-Host "Serial Number: $serialNumber"
+            Write-Host "Model: $model"
+            Write-Host "------------------------------------"
+        }
+
     } catch {
         Write-Host "🚨 Error retrieving hardware information: $_" -ForegroundColor Red
     }
 }
 
-Retrieve-SolidFireHardwareInfo -IPAddress $IPAddress -Username $Username -Password $Password
+# Call the function to retrieve node info with the provided credentials
+Retrieve-SolidFireNodeInfo -IPAddress $IPAddress -Username $Username -Password $Password
