@@ -21,7 +21,7 @@
     Retrieves and displays hardware information for all nodes.
 
 .EXAMPLE
-    .\Get-SolidFireHardwareInfo.ps1
+    .\GclusterNodeHW.ps1
 
     Prompts for credentials and IP address, then retrieves the hardware information.
 
@@ -120,5 +120,11 @@ function Retrieve-SolidFireNodeInfo {
     }
 }
 
-# Call the function to retrieve node info with the provided credentials
-Retrieve-SolidFireNodeInfo -IPAddress $IPAddress -Username $Username -Password $Password
+# Check if parameters were provided, else call the function with prompts
+if (-not $IPAddress -or -not $Username -or -not $Password) {
+    Write-Host "One or more parameters are missing. Please provide values manually."
+    Retrieve-SolidFireNodeInfo -IPAddress $IPAddress -Username $Username -Password $Password
+} else {
+    # Call the function to retrieve node info with the provided credentials
+    Retrieve-SolidFireNodeInfo -IPAddress $IPAddress -Username $Username -Password $Password
+}
