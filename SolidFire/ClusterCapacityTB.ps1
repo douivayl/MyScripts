@@ -40,14 +40,14 @@
     You may not need it at all, depending on your Windows host.
 #>
 
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-[System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-
 param (
     [string]$IPAddress,
     [string]$Username,
     [string]$Password
 )
+
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+[System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 
 function Retrieve-SolidFireClusterCapacity {
     param (
@@ -56,7 +56,6 @@ function Retrieve-SolidFireClusterCapacity {
         [string]$Password
     )
 
-    # Check if IPAddress, Username, and Password are provided as parameters; prompt otherwise
     if (-not $IPAddress) {
         $IPAddress = Read-Host "Enter the SolidFire API IP address"
     }
@@ -69,12 +68,10 @@ function Retrieve-SolidFireClusterCapacity {
         $Password = Read-Host "Enter your SolidFire password"
     }
 
-    # Prepare API URL and Authentication Header
     $apiUrl = "https://$IPAddress/json-rpc/11.0"
     $authInfo = "${Username}:${Password}"
     $authBase64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($authInfo))
 
-    # Set the headers
     $headers = @{
         "Authorization" = "Basic $authBase64"
         "Content-Type"  = "application/json"
@@ -135,5 +132,4 @@ function Retrieve-SolidFireClusterCapacity {
     }
 }
 
-# Call the function to retrieve cluster capacity with the provided credentials
 Retrieve-SolidFireClusterCapacity -IPAddress $IPAddress -Username $Username -Password $Password
