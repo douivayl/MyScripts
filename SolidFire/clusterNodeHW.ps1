@@ -21,7 +21,7 @@
     Retrieves and displays hardware information for all nodes.
 
 .EXAMPLE
-    .\GclusterNodeHW.ps1
+    .\Get-SolidFireHardwareInfo.ps1
 
     Prompts for credentials and IP address, then retrieves the hardware information.
 
@@ -50,6 +50,12 @@ Model: XXXXXX
 # Bypass SSL Certificate Validation (For Testing Only)
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 
+param (
+    [string]$IPAddress,
+    [string]$Username,
+    [string]$Password
+)
+
 function Retrieve-SolidFireNodeInfo {
     param (
         [string]$IPAddress,
@@ -57,35 +63,30 @@ function Retrieve-SolidFireNodeInfo {
         [string]$Password
     )
 
-    # Prompt for the API IP address if not provided
     if (-not $IPAddress) {
         $IPAddress = Read-Host "Enter the SolidFire API IP address"
     }
 
-    # Prompt for the username if not provided
     if (-not $Username) {
         $Username = Read-Host "Enter your SolidFire username"
     }
 
-    # Prompt for the password if not provided
     if (-not $Password) {
         $Password = Read-Host "Enter your SolidFire password"
     }
 
-    # Prepare API URL and Authentication Header
     $apiUrl = "https://$IPAddress/json-rpc/11.0"
    
-    # Prepare the Authorization header using Base64 encoded username and password
+
     $authInfo = "${Username}:${Password}"
     $authBase64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($authInfo))
 
-    # Set the headers
+
     $headers = @{
         "Authorization" = "Basic $authBase64"
         "Content-Type"  = "application/json"
     }
 
-    # Prepare the payload for the API request
     $payload = @"
 {
     "method": "GetHardwareInfo",
@@ -99,16 +100,13 @@ function Retrieve-SolidFireNodeInfo {
     try {
         Write-Host "Retrieving hardware information for all nodes..." -ForegroundColor Yellow
        
-        # Send the request to the SolidFire API
         $response = Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -Body $payload
 
-        # Process and display the serial number and model for each node
         foreach ($node in $response.result.nodes) {
             $nodeID = $node.nodeID
             $serialNumber = $node.result.hardwareInfo.serial
             $model = $node.result.hardwareInfo.platform.nodeType
 
-            # Displaying node info
             Write-Host "Node ID: $nodeID"
             Write-Host "Serial Number: $serialNumber"
             Write-Host "Model: $model"
@@ -120,11 +118,9 @@ function Retrieve-SolidFireNodeInfo {
     }
 }
 
-# Check if parameters were provided, else call the function with prompts
 if (-not $IPAddress -or -not $Username -or -not $Password) {
     Write-Host "One or more parameters are missing. Please provide values manually."
     Retrieve-SolidFireNodeInfo -IPAddress $IPAddress -Username $Username -Password $Password
 } else {
-    # Call the function to retrieve node info with the provided credentials
     Retrieve-SolidFireNodeInfo -IPAddress $IPAddress -Username $Username -Password $Password
 }
