@@ -17,12 +17,10 @@
 
 .EXAMPLE
     .\Get-SolidFireClusterCapacity.ps1 -IPAddress "10.10.10.1" -Username "admin" -Password "yourPassword"
-
     Retrieves and displays cluster capacity, and exports data to CSV.
 
 .EXAMPLE
     .\Get-SolidFireClusterCapacity.ps1
-
     Prompts for credentials and IP address, then retrieves cluster capacity.
 
 .OUTPUTS
@@ -58,23 +56,27 @@ function Retrieve-SolidFireClusterCapacity {
         [string]$Password
     )
 
+    # Check if IPAddress, Username, and Password are provided as parameters; prompt otherwise
     if (-not $IPAddress) {
         $IPAddress = Read-Host "Enter the SolidFire API IP address"
     }
+
     if (-not $Username) {
         $Username = Read-Host "Enter your SolidFire username"
     }
+
     if (-not $Password) {
-        $Password = Read-Host "Enter your SolidFire password" -AsSecureString
-        $Password = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
-            [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)
-        )
+        $Password = Read-Host "Enter your SolidFire password"
     }
 
+    # Prepare API URL and Authentication Header
     $apiUrl = "https://$IPAddress/json-rpc/11.0"
-    $authInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${Username}:${Password}"))
+    $authInfo = "${Username}:${Password}"
+    $authBase64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($authInfo))
+
+    # Set the headers
     $headers = @{
-        "Authorization" = "Basic $authInfo"
+        "Authorization" = "Basic $authBase64"
         "Content-Type"  = "application/json"
     }
 
@@ -120,7 +122,7 @@ function Retrieve-SolidFireClusterCapacity {
             }
 
             $timestamp = (Get-Date -Format "yyyyMMddHHmm")
-            $outputDir = "$env:USERPROFILE\Documents\SolidFireReports"
+            $outputDir = "$env:USERPROFILE\Documents"
             $outputPath = Join-Path -Path $outputDir -ChildPath "ClusterCapacity_$timestamp.csv"
 
             $capacityData | Export-Csv -Path $outputPath -NoTypeInformation -Encoding UTF8
@@ -133,4 +135,5 @@ function Retrieve-SolidFireClusterCapacity {
     }
 }
 
+# Call the function to retrieve cluster capacity with the provided credentials
 Retrieve-SolidFireClusterCapacity -IPAddress $IPAddress -Username $Username -Password $Password
