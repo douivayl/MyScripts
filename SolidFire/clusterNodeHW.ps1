@@ -44,17 +44,15 @@ Model: XXXXXX
     You may not need it at all, depending on your Windows host.
 #>
 
-# Force PowerShell to Use TLS 1.2
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-# Bypass SSL Certificate Validation (For Testing Only)
-[System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-
 param (
     [string]$IPAddress,
     [string]$Username,
     [string]$Password
 )
+
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+[System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 
 function Retrieve-SolidFireNodeInfo {
     param (
